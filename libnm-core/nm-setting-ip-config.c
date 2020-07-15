@@ -3633,6 +3633,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMSettingIPConfig,
 	PROP_DAD_TIMEOUT,
 	PROP_DHCP_TIMEOUT,
 	PROP_DHCP_IAID,
+	PROP_DHCP_REJECT_SERVERS,
 );
 
 typedef struct {
@@ -3642,6 +3643,7 @@ typedef struct {
 	GPtrArray *addresses;   /* array of NMIPAddress */
 	GPtrArray *routes;      /* array of NMIPRoute */
 	GPtrArray *routing_rules;
+	GPtrArray *dhcp_reject_servers;  /* array of IP or CIDR strings */
 	char *method;
 	char *gateway;
 	char *dhcp_hostname;
@@ -4949,6 +4951,156 @@ nm_setting_ip_config_get_dhcp_iaid (NMSettingIPConfig *setting)
 	return NM_SETTING_IP_CONFIG_GET_PRIVATE (setting)->dhcp_iaid;
 }
 
+/**
+ * nm_setting_ip_config_get_num_dhcp_reject_servers:
+ * @setting: the #NMSettingIPConfig
+ *
+ * Returns: the number of configured DHCP reject servers
+ *
+ * Since: 1.28
+ **/
+guint
+nm_setting_ip_config_get_num_dhcp_reject_servers (NMSettingIPConfig *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_IP_CONFIG (setting), 0);
+
+	return NM_SETTING_IP_CONFIG_GET_PRIVATE (setting)->dhcp_reject_servers->len;
+}
+
+/**
+ * nm_setting_ip_config_get_dhcp_reject_server:
+ * @setting: the #NMSettingIPConfig
+ * @idx: index number of the DHCP reject server to return
+ *
+ * Returns: the DHCP reject server at index @idx
+ *
+ * Since: 1.28
+ **/
+const char *
+nm_setting_ip_config_get_dhcp_reject_server (NMSettingIPConfig *setting, int idx)
+{
+	NMSettingIPConfigPrivate *priv;
+
+	g_return_val_if_fail (NM_IS_SETTING_IP_CONFIG (setting), NULL);
+
+	priv = NM_SETTING_IP_CONFIG_GET_PRIVATE (setting);
+	g_return_val_if_fail (idx >= 0 && idx < priv->dhcp_reject_servers->len, NULL);
+
+	return priv->dhcp_reject_servers->pdata[idx];
+}
+
+/**
+ * nm_setting_ip_config_add_dhcp_reject_server:
+ * @setting: the #NMSettingIPConfig
+ * @server: the DHCP reject server to add
+ *
+ * Adds a new DHCP reject server to the setting.
+ *
+ * Returns: %TRUE if the server IP was added; %FALSE if it was already known
+ *
+ * Since: 1.28
+ **/
+gboolean
+nm_setting_ip_config_add_dhcp_reject_server (NMSettingIPConfig *setting,
+                                             const char *server)
+{
+	NMSettingIPConfigPrivate *priv;
+	guint i;
+
+	g_return_val_if_fail (NM_IS_SETTING_IP_CONFIG (setting), FALSE);
+	g_return_val_if_fail (server != NULL, FALSE);
+	g_return_val_if_fail (server[0] != '\0', FALSE);
+
+	priv = NM_SETTING_IP_CONFIG_GET_PRIVATE (setting);
+	for (i = 0; i < priv->dhcp_reject_servers->len; i++) {
+		if (nm_streq (server, priv->dhcp_reject_servers->pdata[i]))
+			return FALSE;
+	}
+
+	g_ptr_array_add (priv->dhcp_reject_servers, g_strdup (server));
+	_notify (setting, PROP_DHCP_REJECT_SERVERS);
+	return TRUE;
+}
+
+/**
+ * nm_setting_ip_config_remove_dhcp_reject_server:
+ * @setting: the #NMSettingIPConfig
+ * @idx: index number of the DHCP reject server
+ *
+ * Removes the DHCP reject server at index @idx.
+ *
+ * Since: 1.28
+ **/
+void
+nm_setting_ip_config_remove_dhcp_reject_server (NMSettingIPConfig *setting, int idx)
+{
+	NMSettingIPConfigPrivate *priv;
+
+	g_return_if_fail (NM_IS_SETTING_IP_CONFIG (setting));
+
+	priv = NM_SETTING_IP_CONFIG_GET_PRIVATE (setting);
+	g_return_if_fail (idx >= 0 && idx < priv->dhcp_reject_servers->len);
+
+	g_ptr_array_remove_index (priv->dhcp_reject_servers, idx);
+	_notify (setting, PROP_DHCP_REJECT_SERVERS);
+}
+
+/**
+ * nm_setting_ip_config_remove_dhcp_reject_server_by_value:
+ * @setting: the #NMSettingIPConfig
+ * @server: the search domain to remove
+ *
+ * Removes the server @dhcp_reject_server from the reject list.
+ *
+ * Returns: %TRUE if the server was found and removed; %FALSE if it was not.
+ *
+ * Since: 1.28
+ **/
+gboolean
+nm_setting_ip_config_remove_dhcp_reject_server_by_value (NMSettingIPConfig *setting,
+                                                         const char *server)
+{
+	NMSettingIPConfigPrivate *priv;
+	guint i;
+
+	g_return_val_if_fail (NM_IS_SETTING_IP_CONFIG (setting), FALSE);
+	g_return_val_if_fail (server != NULL, FALSE);
+	g_return_val_if_fail (server[0] != '\0', FALSE);
+
+	priv = NM_SETTING_IP_CONFIG_GET_PRIVATE (setting);
+	for (i = 0; i < priv->dhcp_reject_servers->len; i++) {
+		if (nm_streq (server, priv->dhcp_reject_servers->pdata[i])) {
+			g_ptr_array_remove_index (priv->dhcp_reject_servers, i);
+			_notify (setting, PROP_DHCP_REJECT_SERVERS);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/**
+ * nm_setting_ip_config_clear_dhcp_reject_servers:
+ * @setting: the #NMSettingIPConfig
+ *
+ * Removes all configured DHCP reject servers.
+ *
+ * Since: 1.28
+ **/
+void
+nm_setting_ip_config_clear_dhcp_reject_servers (NMSettingIPConfig *setting)
+{
+	NMSettingIPConfigPrivate *priv;
+
+	g_return_if_fail (NM_IS_SETTING_IP_CONFIG (setting));
+
+	priv = NM_SETTING_IP_CONFIG_GET_PRIVATE (setting);
+
+	if (priv->dhcp_reject_servers->len != 0) {
+		g_ptr_array_set_size (priv->dhcp_reject_servers, 0);
+		_notify (setting, PROP_DHCP_REJECT_SERVERS);
+	}
+}
+
 static gboolean
 verify_label (const char *label)
 {
@@ -5157,6 +5309,26 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 		                nm_setting_get_name (setting),
 		                NM_SETTING_IP_CONFIG_DHCP_HOSTNAME_FLAGS);
 		return FALSE;
+	}
+
+	/* Validate reject servers */
+	if (priv->dhcp_reject_servers->len != 0) {
+		for (i = 0; i < priv->dhcp_reject_servers->len; i++) {
+			if (!nm_utils_parse_inaddr_prefix (NM_SETTING_IP_CONFIG_GET_FAMILY (setting),
+			                                   priv->dhcp_reject_servers->pdata[i],
+			                                   NULL,
+			                                   NULL)) {
+				g_set_error (error,
+				             NM_CONNECTION_ERROR,
+				             NM_CONNECTION_ERROR_INVALID_PROPERTY,
+				             _("'%s' is not a valid IP or subnet"),
+				             (char *) priv->dhcp_reject_servers->pdata[i]);
+				g_prefix_error (error, "%s.%s: ",
+				                nm_setting_get_name (setting),
+				                NM_SETTING_IP_CONFIG_DHCP_REJECT_SERVERS);
+				return FALSE;
+			}
+		}
 	}
 
 	/* Normalizable errors */
@@ -5434,6 +5606,10 @@ get_property (GObject *object, guint prop_id,
 	case PROP_DHCP_HOSTNAME_FLAGS:
 		g_value_set_uint (value, nm_setting_ip_config_get_dhcp_hostname_flags (setting));
 		break;
+	case PROP_DHCP_REJECT_SERVERS:
+		g_value_take_boxed (value, _nm_utils_ptrarray_to_strv (priv->dhcp_reject_servers));
+		break;
+
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -5540,6 +5716,10 @@ set_property (GObject *object, guint prop_id,
 	case PROP_DHCP_HOSTNAME_FLAGS:
 		priv->dhcp_hostname_flags = g_value_get_uint (value);
 		break;
+	case PROP_DHCP_REJECT_SERVERS:
+		g_ptr_array_unref (priv->dhcp_reject_servers);
+		priv->dhcp_reject_servers = _nm_utils_strv_to_ptrarray (g_value_get_boxed (value));
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -5557,6 +5737,7 @@ nm_setting_ip_config_init (NMSettingIPConfig *setting)
 	priv->dns_search         = g_ptr_array_new_with_free_func (g_free);
 	priv->addresses          = g_ptr_array_new_with_free_func ((GDestroyNotify) nm_ip_address_unref);
 	priv->routes             = g_ptr_array_new_with_free_func ((GDestroyNotify) nm_ip_route_unref);
+	priv->dhcp_reject_servers = g_ptr_array_new_with_free_func (g_free);
 	priv->route_metric       = -1;
 	priv->dhcp_send_hostname = TRUE;
 	priv->may_fail           = TRUE;
@@ -5582,6 +5763,7 @@ finalize (GObject *object)
 	g_ptr_array_unref (priv->routes);
 	if (priv->routing_rules)
 		g_ptr_array_unref (priv->routing_rules);
+	g_ptr_array_unref (priv->dhcp_reject_servers);
 
 	G_OBJECT_CLASS (nm_setting_ip_config_parent_class)->finalize (object);
 }
@@ -6003,6 +6185,25 @@ nm_setting_ip_config_class_init (NMSettingIPConfigClass *klass)
 	                       NM_DHCP_HOSTNAME_FLAG_NONE,
 	                       G_PARAM_READWRITE |
 	                       G_PARAM_STATIC_STRINGS);
+
+	/**
+	 * NMSettingIPConfig:dhcp-reject-servers:
+	 *
+	 * Array of servers from which DHCP offers must be rejected. This property
+	 * is useful to avoid getting a lease from misconfigured or rogue servers.
+	 *
+	 * For DHCPv4, each element must be an IPv4 address, optionally
+	 * followed by a slash and a prefix length (e.g. "192.168.122.0/24").
+	 *
+	 * This property is not currently implemented for DHCPv6.
+	 *
+	 * Since: 1.28
+	 **/
+	obj_properties[PROP_DHCP_REJECT_SERVERS] =
+	    g_param_spec_boxed (NM_SETTING_IP_CONFIG_DHCP_REJECT_SERVERS, "", "",
+	                        G_TYPE_STRV,
+	                        G_PARAM_READWRITE |
+	                        G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 }

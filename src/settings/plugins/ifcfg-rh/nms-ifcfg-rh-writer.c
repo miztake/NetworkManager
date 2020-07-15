@@ -2704,6 +2704,18 @@ write_ip4_setting (NMConnection *connection,
 
 	write_res_options (ifcfg, s_ip4, "RES_OPTIONS");
 
+	num = nm_setting_ip_config_get_num_dhcp_reject_servers (s_ip4);
+	if (num > 0) {
+		nm_auto_free_gstring GString *servers = g_string_new (NULL);
+
+		for (i = 0; i < num; i++) {
+			if (i > 0)
+				g_string_append_c (servers, ' ');
+			g_string_append (servers, nm_setting_ip_config_get_dhcp_reject_server (s_ip4, i));
+		}
+		svSetValueStr (ifcfg, "DHCP_REJECT_SERVERS", servers->str);
+	}
+
 	return TRUE;
 }
 
