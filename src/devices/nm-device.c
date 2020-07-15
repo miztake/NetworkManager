@@ -8755,6 +8755,8 @@ dhcp4_start (NMDevice *self)
 	NMSettingConnection *s_con;
 	GError *error = NULL;
 	const NMPlatformLink *pllink;
+	gs_unref_ptrarray GPtrArray *reject_servers = NULL;
+	guint i, num;
 
 	connection = nm_device_get_applied_connection (self);
 	g_return_val_if_fail (connection, FALSE);
@@ -8776,6 +8778,14 @@ dhcp4_start (NMDevice *self)
 
 	client_id = dhcp4_get_client_id (self, connection, hwaddr);
 
+	num = nm_setting_ip_config_get_num_dhcp_reject_servers (s_ip4);
+	if (num) {
+		reject_servers = g_ptr_array_sized_new (num + 1);
+		for (i = 0; i < num; i++)
+			g_ptr_array_add (reject_servers, (char *) nm_setting_ip_config_get_dhcp_reject_server (s_ip4, i));
+		g_ptr_array_add (reject_servers, NULL);
+	}
+
 	g_warn_if_fail (priv->dhcp_data_4.client == NULL);
 	priv->dhcp_data_4.client = nm_dhcp_manager_start_ip4 (nm_dhcp_manager_get (),
 	                                                      nm_netns_get_multi_idx (nm_device_get_netns (self)),
@@ -8795,6 +8805,7 @@ dhcp4_start (NMDevice *self)
 	                                                      get_dhcp_timeout (self, AF_INET),
 	                                                      priv->dhcp_anycast_address,
 	                                                      NULL,
+	                                                      reject_servers ? (const char **) reject_servers->pdata : NULL,
 	                                                      &error);
 	if (!priv->dhcp_data_4.client) {
 		_LOGW (LOGD_DHCP4, "failure to start DHCP: %s", error->message);
